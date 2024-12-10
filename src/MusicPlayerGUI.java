@@ -4,8 +4,11 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.Hashtable;
 
 public class MusicPlayerGUI extends JFrame {
 
@@ -16,6 +19,7 @@ public class MusicPlayerGUI extends JFrame {
     private JFileChooser jFileChooser;
     private JLabel songTitle, songArtist;
     private JPanel playbackBtns;
+    private JSlider playbackSlider;
 
     public MusicPlayerGUI() {
         super("Music Player");
@@ -27,7 +31,7 @@ public class MusicPlayerGUI extends JFrame {
 
         getContentPane().setBackground(FRAME_COLOR);
 
-        musicPlayer = new MusicPlayer();
+        musicPlayer = new MusicPlayer(this);
 
         jFileChooser = new JFileChooser();
         jFileChooser.setCurrentDirectory(new File("/home/kamikaze/Music"));
@@ -57,9 +61,25 @@ public class MusicPlayerGUI extends JFrame {
         songArtist.setHorizontalAlignment(SwingConstants.CENTER);
         add(songArtist);
 
-        JSlider playbackSlider = new JSlider(JSlider.HORIZONTAL, 0, 100, 0);
+        playbackSlider = new JSlider(JSlider.HORIZONTAL, 0, 100, 0);
         playbackSlider.setBounds(getWidth()/2 - 200/2, 255, 200, 40);
         playbackSlider.setBackground(null);
+        playbackSlider.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                musicPlayer.pauseSong();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                JSlider source = (JSlider) e.getSource();
+                int frame = source.getValue();
+                musicPlayer.setCurrentFrame(frame);
+                musicPlayer.setCurrentTimeInMilli((int) (frame / (1.088 * musicPlayer.getCurrentSong().getFrameRatePerMillisecond())));
+                musicPlayer.playCurrentSong();
+                enablePauseButtonDisablePlayButton();
+            }
+        });
         add(playbackSlider);
 
         addPlaybackButtons();
@@ -88,13 +108,39 @@ public class MusicPlayerGUI extends JFrame {
                     Song song = new Song(selectFile.getPath());
                     musicPlayer.loadSong(song);
                     updateSongTitleAndArtist(song);
+                    updatePlaybackSlider(song);
                     enablePauseButtonDisablePlayButton();
                 }
             }
         });
         JMenuItem createPlaylist = new JMenuItem("Create Playlist");
+        createPlaylist.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                new MusicPlaylistDialog(MusicPlayerGUI.this).setVisible(true);
+            }
+        });
+
         JMenuItem loadPlaylist = new JMenuItem("Load Playlist");
+        loadPlaylist.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                JFileChooser jFileChooser = new JFileChooser();
+                jFileChooser.setFileFilter(new FileNameExtensionFilter("Playlist", "txt"));
+                jFileChooser.setCurrentDirectory(new File("/home/kamikaze/kenji/Super 50/Music-Player/playlists"));
+
+                int result = jFileChooser.showOpenDialog(MusicPlayerGUI.this);
+                File selectedFile = jFileChooser.getSelectedFile();
+
+                if (result == JFileChooser.APPROVE_OPTION && selectedFile != null) {
+                    musicPlayer.stopSong();
+                    musicPlayer.loadPlaylist(selectedFile);
+                }
+            }
+        });
+
         songMenu.add(loadSong);
+
         playlistMenu.add(createPlaylist);
         playlistMenu.add(loadPlaylist);
 
@@ -156,12 +202,35 @@ public class MusicPlayerGUI extends JFrame {
         add(playbackBtns);
     }
 
-    private void updateSongTitleAndArtist(Song song) {
+    public void setPlaybackSliderValue(int frame) {
+        playbackSlider.setValue(frame);
+    }
+
+    public void updateSongTitleAndArtist(Song song) {
         songTitle.setText(song.getSongTitle());
         songArtist.setText(song.getSongArtist());
     }
 
-    private void enablePauseButtonDisablePlayButton() {
+    public void updatePlaybackSlider(Song song) {
+        playbackSlider.setMaximum(song.getMp3File().getFrameCount());
+        Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
+
+        JLabel labelBeginning = new JLabel("00:00");
+        labelBeginning.setFont(new Font("Mononoki Nerd Font Mono", Font.BOLD, 10));
+        labelBeginning.setForeground(TEXT_COLOR);
+
+        JLabel labelEnd = new JLabel(song.getSongLength());
+        labelEnd.setFont(new Font("Mononoki Nerd Font Mono", Font.BOLD, 10));
+        labelEnd.setForeground(TEXT_COLOR);
+
+        labelTable.put(0, labelBeginning);
+        labelTable.put(song.getMp3File().getFrameCount(), labelEnd);
+
+        playbackSlider.setLabelTable(labelTable);
+        playbackSlider.setPaintLabels(true);
+    }
+
+    public void enablePauseButtonDisablePlayButton() {
         JButton playButton = (JButton) playbackBtns.getComponent(1);
         JButton pauseButton = (JButton) playbackBtns.getComponent(2);
 
@@ -171,7 +240,7 @@ public class MusicPlayerGUI extends JFrame {
         pauseButton.setEnabled(true);
     }
 
-    private void enablePlayButtonDisablePauseButton() {
+    public void enablePlayButtonDisablePauseButton() {
         JButton playButton = (JButton) playbackBtns.getComponent(1);
         JButton pauseButton = (JButton) playbackBtns.getComponent(2);
 
